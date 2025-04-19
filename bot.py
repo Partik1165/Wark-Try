@@ -1363,8 +1363,14 @@ def main():
             # Error handler
             application.add_error_handler(error_handler)
 
-            # Run all async tasks in a single event loop
-            asyncio.run(async_main(application))
+            # Get the event loop and run async tasks
+            loop = asyncio.get_event_loop()
+            try:
+                loop.run_until_complete(async_main(application))
+            finally:
+                # Ensure loop is closed properly
+                if not loop.is_closed():
+                    loop.close()
             break
         except Conflict as e:
             logger.error(f"Conflict error on attempt {attempt + 1}: {e}")
