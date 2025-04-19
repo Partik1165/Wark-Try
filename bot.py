@@ -70,7 +70,10 @@ def init_mongo_clients():
 async def check_mongo_storage(context: ContextTypes.DEFAULT_TYPE):
     """Check storage for all MongoDB databases and notify admins if free space is low."""
     def escape_markdown_v2(text):
-        """Escape special characters for MarkdownV2."""
+        """Escape special characters for MarkdownV2, including numerical values."""
+        if isinstance(text, (int, float)):
+            text = f"{text:.2f}"  # Convert numbers to string with 2 decimal places
+        text = str(text)
         special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
         for char in special_chars:
             text = text.replace(char, f'\\{char}')
@@ -88,8 +91,8 @@ async def check_mongo_storage(context: ContextTypes.DEFAULT_TYPE):
                 message = (
                     f"⚠️ *Low Storage Alert* ⚠️\n"
                     f"Database: {escape_markdown_v2(db_name)}\n"
-                    f"Free Space: {free_storage_mb:.2f} MB\n"
-                    f"Total Size: {total_size_mb:.2f} MB\n"
+                    f"Free Space: {escape_markdown_v2(free_storage_mb)} MB\n"
+                    f"Total Size: {escape_markdown_v2(total_size_mb)} MB\n"
                     f"Please take action to free up space or expand storage."
                 )
                 for admin_id in ADMIN_IDS:
@@ -104,7 +107,7 @@ async def check_mongo_storage(context: ContextTypes.DEFAULT_TYPE):
                         logger.error(f"Failed to send notification to admin {admin_id}: {e}")
         except Exception as e:
             logger.error(f"Error checking storage for database {db_name}: {e}")
-
+            
 async def start_storage_monitoring(application: Application):
     """Start periodic MongoDB storage monitoring."""
     application.job_queue.run_repeating(
