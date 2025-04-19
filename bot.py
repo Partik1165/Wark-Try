@@ -344,7 +344,7 @@ async def admhelp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/addplayer <match_name> <team_name> <players> - Add players.\n"
         "/points <player> <points> - Assign points.\n"
         "/lockmatch <match_name> - Lock match.\n"
-        "/clear - Clear all data.\n"
+        "/clear - Clear match data.\n"
         "/yonadd <question> <option1> <option2> - Add Yes/No question.\n"
         "/yona <question_id> <option_number> - Set correct answer.\n"
         "/yonclear - Clear Yes/No data.\n"
@@ -505,18 +505,20 @@ async def points(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("An error occurred. Please try again.")
 
 async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Clear all data."""
+    """Prompt admin to select a match to clear its data."""
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("❌ Unauthorized.")
         return
     try:
-        for collection in collections.values():
-            collection.delete_many({})
-        locked_matches.clear()
-        await update.message.reply_text("All data cleared.")
+        matches = collections["matches"].find()
+        if not collections["matches"].count_documents({}):
+            await update.message.reply_text("No matches available to clear.")
+            return
+        keyboard = [[InlineKeyboardButton(m["name"], callback_data=f"clear_match_{m['name']}")] for m in matches]
+        await update.message.reply_text("Select a match to clear its data:", reply_markup=InlineKeyboardMarkup(keyboard))
     except PyMongoError as e:
-        logger.error(f"Failed to clear data: {e}")
-        await update.message.reply_text("Error clearing data.")
+        logger.error(f"Failed to fetch matches for clear: {e}")
+        await update.message.reply_text("Error fetching matches.")
     except TelegramError as e:
         logger.error(f"Failed to send clear message: {e}")
         await update.message.reply_text("An error occurred. Please try again.")
@@ -524,7 +526,7 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def lock_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Lock a match."""
     if not is_admin(update.effective_user.id):
-        await   await update.message.reply_text("❌ Unauthorized.")
+        await update.message.reply_text("❌ Unauthorized.")
         return
     if not context.args:
         await update.message.reply_text("Usage: /lockmatch <match_name>")
@@ -572,7 +574,7 @@ async def yonadd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Question/options cannot be empty.")
             return
         question_id = str(collections["yon_questions"].count_documents({}) + 1)
-        collections["yon_questions"].insert_one({
+        collections["yon Questions"].insert_one({
             "qid": question_id,
             "question": question,
             "options": [option1, option2],
@@ -895,6 +897,29 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data.startswith("yon_nav::"):
             next_qid = data[len("yon_nav::"):]
             await display_yon_question(query, context, user_id, next_qid)
+
+        elif data.startswith("clear_match_"):
+            if not is_admin(query.from_user.id):
+                await query.message.reply_text("❌ Unauthorized.")
+                return
+            match_name = sanitize_input(data[len("clear_match_"):])
+            match_doc = collections["matches"].find_one({"name": match_name})
+            if not match_doc:
+                await query.message.reply_text("Match not found.")
+                return
+            # Collect players to remove their points
+            players = match_doc.get("players", [])
+            # Delete match from matches collection
+            collections["matches"].delete_one({"name": match_name})
+            # Delete points for players in this match
+            if players:
+                collections["points"].delete_many({"player": {"$in": players}})
+            # Delete locked status
+            collections["locked_matches"].delete_one({"match_name": match_name})
+            if match_name in locked_matches:
+                del locked_matches[match_name]
+            # User teams and amounts are preserved
+            await query.message.reply_text(f"All data for match '{match_name}' cleared. User teams and bets preserved.")
 
     except PyMongoError as e:
         logger.error(f"Callback error: {e}")
