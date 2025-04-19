@@ -6,7 +6,7 @@ import time
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
-from telegram.error import TelegramError
+from telegram.error import TelegramError, Conflict
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 
@@ -14,7 +14,7 @@ from pymongo.errors import ConnectionFailure
 load_dotenv()
 
 # Configuration
-ADMIN_IDS = [6293126201, 5460768109, 5220416927, 6727691050]
+ADMIN_IDS = [6293126201, 5460768109, 5220416927]
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 VERIFICATION_GROUP_ID = int(os.getenv("VERIFICATION_GROUP_ID"))
 
@@ -1272,46 +1272,62 @@ async def user_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # === MAIN ===
 def main():
-    """Start the bot."""
-    application = Application.builder().token(BOT_TOKEN).build()
+    """Start the bot with conflict handling."""
+    max_retries = 3
+    retry_delay = 5  # seconds
+    for attempt in range(max_retries):
+        try:
+            application = Application.builder().token(BOT_TOKEN).build()
 
-    # User commands
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help))
-    application.add_handler(CommandHandler("schedule", schedule))
-    application.add_handler(CommandHandler("addamount", addamount))
-    application.add_handler(CommandHandler("profile", profile))
-    application.add_handler(CommandHandler("yon", yon))
-    application.add_handler(CommandHandler("yonrankings", yonrankings))
+            # User commands
+            application.add_handler(CommandHandler("start", start))
+            application.add_handler(CommandHandler("help", help))
+            application.add_handler(CommandHandler("schedule", schedule))
+            application.add_handler(CommandHandler("addamount", addamount))
+            application.add_handler(CommandHandler("profile", profile))
+            application.add_handler(CommandHandler("yon", yon))
+            application.add_handler(CommandHandler("yonrankings", yonrankings))
 
-    # Admin commands
-    application.add_handler(CommandHandler("admhelp", admhelp))
-    application.add_handler(CommandHandler("admin", admin))
-    application.add_handler(CommandHandler("addmatch", addmatch))
-    application.add_handler(CommandHandler("removematch", removematch))
-    application.add_handler(CommandHandler("addteam", addteam))
-    application.add_handler(CommandHandler("removeteam", removeteam))
-    application.add_handler(CommandHandler("addplayer", addplayer))
-    application.add_handler(CommandHandler("resetplayers", resetplayers))
-    application.add_handler(CommandHandler("points", points))
-    application.add_handler(CommandHandler("clear", clear))
-    application.add_handler(CommandHandler("lockmatch", lock_match))
-    application.add_handler(CommandHandler("unlockmatch", unlock_match))
-    application.add_handler(CommandHandler("yonadd", yonadd))
-    application.add_handler(CommandHandler("yona", yona))
-    application.add_handler(CommandHandler("yonclear", yonclear))
-    application.add_handler(CommandHandler("announcement", announcement))
-    application.add_handler(CommandHandler("team", team))
-    application.add_handler(CommandHandler("backup", backup))
-    application.add_handler(CommandHandler("upload", upload))
-    application.add_handler(CommandHandler("checkstorage", check_storage))
+            # Admin commands
+            application.add_handler(CommandHandler("admhelp", admhelp))
+            application.add_handler(CommandHandler("admin", admin))
+            application.add_handler(CommandHandler("addmatch", addmatch))
+            application.add_handler(CommandHandler("removematch", removematch))
+            application.add_handler(CommandHandler("addteam", addteam))
+            application.add_handler(CommandHandler("removeteam", removeteam))
+            application.add_handler(CommandHandler("addplayer", addplayer))
+            application.add_handler(CommandHandler("resetplayers", resetplayers))
+            application.add_handler(CommandHandler("points", points))
+            application.add_handler(CommandHandler("clear", clear))
+            application.add_handler(CommandHandler("lockmatch", lock_match))
+            application.add_handler(CommandHandler("unlockmatch", unlock_match))
+            application.add_handler(CommandHandler("yonadd", yonadd))
+            application.add_handler(CommandHandler("yona", yona))
+            application.add_handler(CommandHandler("yonclear", yonclear))
+            application.add_handler(CommandHandler("announcement", announcement))
+            application.add_handler(CommandHandler("team", team))
+            application.add_handler(CommandHandler("backup", backup))
+            application.add_handler(CommandHandler("upload", upload))
+            application.add_handler(CommandHandler("checkstorage", check_storage))
 
-    # Callback and file upload handlers
-    application.add_handler(CallbackQueryHandler(user_callback))
-    application.add_handler(MessageHandler(filters.Document.ALL, handle_uploaded_file))
+            # Callback and file upload handlers
+            application.add_handler(CallbackQueryHandler(user_callback))
+            application.add_handler(MessageHandler(filters.Document.ALL, handle_uploaded_file))
 
-    # Start storage monitoring
-    application.run_polling()
+            # Start storage monitoring
+            application.run_polling(allowed_updates=Update.ALL_TYPES)
+            break  # Exit retry loop if polling starts successfully
+        except Conflict as e:
+            logger.error(f"Conflict error on attempt {attempt + 1}: {e}")
+            if attempt < max_retries - 1:
+                logger.info(f"Retrying after {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                logger.error("Max retries reached. Exiting.")
+                raise
+        except Exception as e:
+            logger.error(f"Unexpected error: {e}")
+            raise
 
 if __name__ == "__main__":
     main()
