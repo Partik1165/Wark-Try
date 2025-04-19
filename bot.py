@@ -465,7 +465,7 @@ async def points(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pts = int(pts)
         db["points"][player] = pts
         for client, db_name in mongo_clients:
-        save_db(client, db_name, db)
+            save_db(client, db_name, db)
         await update.message.reply_text(f"{player} got {pts} points.")
     except ValueError:
         await update.message.reply_text("Points must be a number.")
