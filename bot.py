@@ -69,6 +69,13 @@ def init_mongo_clients():
 
 async def check_mongo_storage(context: ContextTypes.DEFAULT_TYPE):
     """Check storage for all MongoDB databases and notify admins if free space is low."""
+    def escape_markdown_v2(text):
+        """Escape special characters for MarkdownV2."""
+        special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+        for char in special_chars:
+            text = text.replace(char, f'\\{char}')
+        return text
+
     for client, db_name in mongo_clients:
         try:
             db = client[db_name]
@@ -79,8 +86,8 @@ async def check_mongo_storage(context: ContextTypes.DEFAULT_TYPE):
 
             if free_storage_mb <= FREE_SPACE_THRESHOLD_MB:
                 message = (
-                    f"⚠️ Low Storage Alert ⚠️\n"
-                    f"Database: {db_name}\n"
+                    f"⚠️ *Low Storage Alert* ⚠️\n"
+                    f"Database: {escape_markdown_v2(db_name)}\n"
                     f"Free Space: {free_storage_mb:.2f} MB\n"
                     f"Total Size: {total_size_mb:.2f} MB\n"
                     f"Please take action to free up space or expand storage."
@@ -90,7 +97,7 @@ async def check_mongo_storage(context: ContextTypes.DEFAULT_TYPE):
                         await context.bot.send_message(
                             chat_id=admin_id,
                             text=message,
-                            parse_mode="Markdown"
+                            parse_mode="MarkdownV2"
                         )
                         logger.info(f"Sent low storage notification to admin {admin_id} for {db_name}")
                     except TelegramError as e:
