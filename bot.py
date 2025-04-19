@@ -14,7 +14,7 @@ from pymongo.errors import ConnectionFailure
 load_dotenv()
 
 # Configuration
-ADMIN_IDS = [6293126201, 5460768109, 5220416927]
+ADMIN_IDS = [6293126201, 5460768109, 5220416927, 6727691050]
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 VERIFICATION_GROUP_ID = int(os.getenv("VERIFICATION_GROUP_ID"))
 
@@ -39,7 +39,11 @@ def init_mongo_clients():
             try:
                 client = MongoClient(uri, serverSelectionTimeoutMS=5000)
                 client.admin.command('ping')
+                # Extract database name from URI, use default if not specified
                 db_name = uri.split('/')[-1].split('?')[0]
+                if not db_name:
+                    db_name = "cricket_default_db"  # Default database name
+                    logger.warning(f"No database name in URI {uri}. Using default: {db_name}")
                 mongo_clients.append((client, db_name))
                 logger.info(f"Connected to MongoDB database: {db_name}")
                 # Initialize collection if it doesn't exist
