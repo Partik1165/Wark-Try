@@ -1,3 +1,4 @@
+```python
 import logging
 import json
 import asyncio
@@ -14,7 +15,7 @@ from pymongo.errors import ConnectionFailure
 load_dotenv()
 
 # Configuration
-ADMIN_IDS = [6293126201, 5460768109, 5220416927]
+ADMIN_IDS = [6293126201, 5460768109, 5220416927, 6727691050]
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 VERIFICATION_GROUP_ID = int(os.getenv("VERIFICATION_GROUP_ID"))
 
@@ -39,14 +40,12 @@ def init_mongo_clients():
             try:
                 client = MongoClient(uri, serverSelectionTimeoutMS=5000)
                 client.admin.command('ping')
-                # Extract database name from URI, use default if not specified
                 db_name = uri.split('/')[-1].split('?')[0]
                 if not db_name:
-                    db_name = "cricket_default_db"  # Default database name
+                    db_name = "cricket_default_db"
                     logger.warning(f"No database name in URI {uri}. Using default: {db_name}")
                 mongo_clients.append((client, db_name))
                 logger.info(f"Connected to MongoDB database: {db_name}")
-                # Initialize collection if it doesn't exist
                 db = client[db_name]
                 if COLLECTION_NAME not in db.list_collection_names():
                     db[COLLECTION_NAME].insert_one({
@@ -137,7 +136,7 @@ def load_db(client, db_name):
                 "vice_captains": {}
             }
             db[COLLECTION_NAME].insert_one(data)
-        data.pop('_id', None)  # Remove MongoDB's _id field
+        data.pop('_id', None)
         return data
     except Exception as e:
         logger.error(f"Failed to load data from {db_name}: {e}")
@@ -361,10 +360,8 @@ async def removematch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if match not in db["matches"]:
         await update.message.reply_text("Match not found.")
         return
-    # Remove the match and its data (teams, players) only
     db["matches"].pop(match, None)
     locked_matches.pop(match, None)
-    # Sync changes to all MongoDB databases
     for client, db_name in mongo_clients:
         save_db(client, db_name, db)
     await update.message.reply_text(f"Match {match} removed from MongoDB. All user data, including history for this match, preserved.")
@@ -479,7 +476,6 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("❌ You are not authorized to use this command.")
         return
-    # Reset in-memory database
     db.clear()
     db.update({
         "matches": {},
@@ -493,7 +489,6 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "captains": {},
         "vice_captains": {}
     })
-    # Drop and recreate collection in all MongoDB databases
     for client, db_name in mongo_clients:
         try:
             db_mongo = client[db_name]
@@ -1270,11 +1265,41 @@ async def user_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("yon_nav::"):
         await yon_nav(update, context)
 
-# === MAIN ===
+# === ERROR HANDLER ===
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle errors and log them."""
+    logger.error(f"Update {update} caused error: {context.error}")
+    if isinstance(context.error, Conflict):
+        logger.warning("Conflict error detected. Bot will retry automatically.")
+        # Notify admins about the conflict
+        for admin_id in ADMIN_IDS:
+            try:
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=f"⚠️ Bot Conflict Error\n\n"
+                         f"A conflict occurred due to multiple bot instances running. "
+                         f"The bot is retrying automatically. Please ensure only one instance is running."
+                )
+            except TelegramError as e:
+                logger.error(f"Failed to notify admin {admin_id}: {e}")
+    else:
+        # Notify admins about other errors
+        for admin_id in ADMIN_IDS:
+            try:
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=f"⚠️ Bot Error\n\n"
+                         f"An error occurred: {context.error}\n"
+                         f"Please check the logs for details."
+                )
+            except TelegramError as e:
+                logger.error(f"Failed to notify admin {admin_id}: {e}")
+
+# === MAIN FUNCTION ===
 def main():
     """Start the bot with conflict handling."""
     max_retries = 3
-    retry_delay = 5  # seconds
+    retry_delay = 5
     for attempt in range(max_retries):
         try:
             application = Application.builder().token(BOT_TOKEN).build()
@@ -1298,9 +1323,9 @@ def main():
             application.add_handler(CommandHandler("addplayer", addplayer))
             application.add_handler(CommandHandler("resetplayers", resetplayers))
             application.add_handler(CommandHandler("points", points))
-            application.add_handler(CommandHandler("clear", clear))
             application.add_handler(CommandHandler("lockmatch", lock_match))
             application.add_handler(CommandHandler("unlockmatch", unlock_match))
+            application.add_handler(CommandHandler("clear", clear))
             application.add_handler(CommandHandler("yonadd", yonadd))
             application.add_handler(CommandHandler("yona", yona))
             application.add_handler(CommandHandler("yonclear", yonclear))
@@ -1310,13 +1335,23 @@ def main():
             application.add_handler(CommandHandler("upload", upload))
             application.add_handler(CommandHandler("checkstorage", check_storage))
 
-            # Callback and file upload handlers
+            # Callback handler
             application.add_handler(CallbackQueryHandler(user_callback))
+
+            # File upload handler
             application.add_handler(MessageHandler(filters.Document.ALL, handle_uploaded_file))
 
-            # Start storage monitoring
+            # Error handler
+            application.add_error_handler(error_handler)
+
+            # Start MongoDB storage monitoring
+            application.add_handler(CommandHandler("checkstorage", check_storage))
+            start_storage_monitoring(application)
+
+            # Start polling
+            logger.info("Starting bot polling...")
             application.run_polling(allowed_updates=Update.ALL_TYPES)
-            break  # Exit retry loop if polling starts successfully
+            break
         except Conflict as e:
             logger.error(f"Conflict error on attempt {attempt + 1}: {e}")
             if attempt < max_retries - 1:
