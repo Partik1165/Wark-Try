@@ -1353,9 +1353,12 @@ def main():
             # Error handler
             application.add_error_handler(error_handler)
 
-            # Start MongoDB storage monitoring
-            application.add_handler(CommandHandler("checkstorage", check_storage))
-            start_storage_monitoring(application)
+            # Start MongoDB storage monitoring in async context
+            async def setup_storage_monitoring(app):
+                await start_storage_monitoring(app)
+
+            logger.info("Setting up storage monitoring...")
+            asyncio.run(setup_storage_monitoring(application))
 
             # Start polling
             logger.info("Starting bot polling...")
@@ -1372,6 +1375,5 @@ def main():
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
             raise
-
 if __name__ == "__main__":
     main()
