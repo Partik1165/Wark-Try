@@ -8,7 +8,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 from telegram.error import TelegramError
 from pymongo import MongoClient
-from pymongo.errors import ConnectionError
+from pymongo.errors import ConnectionFailure
 
 # Load environment variables from .env
 load_dotenv()
@@ -58,7 +58,7 @@ def init_mongo_clients():
                         "vice_captains": {}
                     })
                 break
-            except ConnectionError:
+            except ConnectionFailure:
                 logger.warning(f"Connection attempt {attempt + 1} failed for {uri}")
                 time.sleep(2)
             except Exception as e:
@@ -346,7 +346,7 @@ async def addmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Match {match} added.")
 
 async def removematch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Remove a match and its players, preserving user betting history for other matches."""
+    """Remove a match and its players from MongoDB, preserving all user data."""
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("❌ You are not authorized to use this command.")
         return
@@ -357,23 +357,13 @@ async def removematch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if match not in db["matches"]:
         await update.message.reply_text("Match not found.")
         return
-    # Remove the match and its players
+    # Remove the match and its data (teams, players) only
     db["matches"].pop(match, None)
-    # Remove match-specific user data, preserving other matches
-    for user_id in db["user_teams"]:
-        db["user_teams"][user_id].pop(match, None)
-    for user_id in db["amounts"]:
-        db["amounts"][user_id].pop(match, None)
-    for user_id in db["pending_bets"]:
-        db["pending_bets"][user_id].pop(match, None)
-    for user_id in db["captains"]:
-        db["captains"][user_id].pop(match, None)
-    for user_id in db["vice_captains"]:
-        db["vice_captains"][user_id].pop(match, None)
     locked_matches.pop(match, None)
+    # Sync changes to all MongoDB databases
     for client, db_name in mongo_clients:
         save_db(client, db_name, db)
-    await update.message.reply_text(f"Match {match} and its players removed. User betting history for other matches preserved.")
+    await update.message.reply_text(f"Match {match} removed from MongoDB. All user data, including history for this match, preserved.")
 
 async def addteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Add a team to a match."""
@@ -475,7 +465,7 @@ async def points(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pts = int(pts)
         db["points"][player] = pts
         for client, db_name in mongo_clients:
-            save_db(client, db_name, db)
+        save_db(client, db_name, db)
         await update.message.reply_text(f"{player} got {pts} points.")
     except ValueError:
         await update.message.reply_text("Points must be a number.")
