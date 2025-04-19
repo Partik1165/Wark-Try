@@ -1305,6 +1305,16 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Failed to notify admin {admin_id}: {e}")
 
 # === MAIN FUNCTION ===
+async def async_main(application):
+    """Run all async setup and polling tasks."""
+    # Start MongoDB storage monitoring
+    logger.info("Setting up storage monitoring...")
+    await start_storage_monitoring(application)
+
+    # Start polling
+    logger.info("Starting bot polling...")
+    await application.run_polling(allowed_updates=Update.ALL_TYPES)
+
 def main():
     """Start the bot with conflict handling."""
     max_retries = 3
@@ -1353,19 +1363,8 @@ def main():
             # Error handler
             application.add_error_handler(error_handler)
 
-            # Start MongoDB storage monitoring in async context
-            async def setup_storage_monitoring(app):
-                await start_storage_monitoring(app)
-
-            logger.info("Setting up storage monitoring...")
-            asyncio.run(setup_storage_monitoring(application))
-
-            # Run polling in async context
-            async def run_bot(app):
-                await app.run_polling(allowed_updates=Update.ALL_TYPES)
-
-            logger.info("Starting bot polling...")
-            asyncio.run(run_bot(application))
+            # Run all async tasks in a single event loop
+            asyncio.run(async_main(application))
             break
         except Conflict as e:
             logger.error(f"Conflict error on attempt {attempt + 1}: {e}")
