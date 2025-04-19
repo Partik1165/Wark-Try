@@ -1360,9 +1360,12 @@ def main():
             logger.info("Setting up storage monitoring...")
             asyncio.run(setup_storage_monitoring(application))
 
-            # Start polling
+            # Run polling in async context
+            async def run_bot(app):
+                await app.run_polling(allowed_updates=Update.ALL_TYPES)
+
             logger.info("Starting bot polling...")
-            application.run_polling(allowed_updates=Update.ALL_TYPES)
+            asyncio.run(run_bot(application))
             break
         except Conflict as e:
             logger.error(f"Conflict error on attempt {attempt + 1}: {e}")
