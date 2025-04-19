@@ -1,4 +1,3 @@
-```python
 import logging
 import json
 import asyncio
