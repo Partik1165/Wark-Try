@@ -11,7 +11,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from telegram.error import TelegramError
 
 # Configuration
-ADMIN_IDS = [6293126201, 5460768109, 5220416927]
+ADMIN_IDS = [6727691050]
 BOT_TOKEN = "7716109066:AAFtW_RT0aiqa4WLGf70Uyi5PdebJGurrK8"
 DATA_FILE = "match_data.json"
 VERIFICATION_GROUP_ID = -1002511895498
